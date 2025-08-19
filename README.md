@@ -1,129 +1,143 @@
-# Migrate Mate - Subscription Cancellation Flow Challenge
 
-## Overview
+# Cancel Flow (take-home)
 
-Convert an existing Figma design into a fully-functional subscription-cancellation flow for Migrate Mate. This challenge tests your ability to implement pixel-perfect UI, handle complex business logic, and maintain security best practices.
+I built a small subscription **cancellation flow** with a deterministic A/B downsell using **Next.js + TypeScript + Tailwind + Supabase**. This is evaluation-only (not production).
 
-## Objective
+## Quickstart
 
-Implement the Figma-designed cancellation journey exactly on mobile + desktop, persist outcomes securely, and instrument the A/B downsell logic.
+```bash
+npm install
+npm run db:setup
+npm run dev
+# open http://localhost:3000/cancel
+````
 
-## What's Provided
+## Environment
 
-This repository contains:
-- ✅ Next.js + TypeScript + Tailwind scaffold
-- ✅ `seed.sql` with users table (25/29 USD plans) and empty cancellations table
-- ✅ Local Supabase configuration for development
-- ✅ Basic Supabase client setup in `src/lib/supabase.ts`
+Create `.env.local` using the keys printed by `npx supabase start` (an example is in `.env.example`):
 
-## Tech Stack (Preferred)
+```
+NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
+NEXT_PUBLIC_SUPABASE_ANON_KEY=REPLACE_ME
+SUPABASE_SERVICE_ROLE_KEY=REPLACE_ME
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+MOCK_USER_ID=550e8400-e29b-41d4-a716-446655440001
+NEXT_PUBLIC_MOCK_USER_ID=550e8400-e29b-41d4-a716-446655440001
+```
 
-- **Next.js** with App Router
-- **React** with TypeScript
-- **Tailwind CSS** for styling
-- **Supabase** (Postgres + Row-Level Security)
+`npm run db:setup` starts Supabase and applies `seed.sql` + `schema_patch.sql`.
 
-> **Alternative stacks allowed** if your solution:
-> 1. Runs with `npm install && npm run dev`
-> 2. Persists to a Postgres-compatible database
-> 3. Enforces table-level security
+## What I implemented
 
-## Must-Have Features
+* Progressive flow: **Reason → Offer (A/B) → Confirm** with mobile/desktop layouts.
+* Deterministic A/B: assigned once with secure RNG, stored in `subscriptions.downsell_variant`, reused on return.
+* Cancel path: sets `subscriptions.pending_cancellation = true` and inserts into `cancellations`.
+* Discount path (if Variant B accepted): reduces price (\$25→\$15 or \$29→\$19) and keeps the subscription active (no cancellation row).
+* “Already pending” UX: shows an info card if the sub is already pending.
+* Security: Origin check (CSRF), payload validation (incl. max reason length), RLS policies added.
 
-### 1. Progressive Flow (Figma Design)
-- Implement the exact cancellation journey from provided Figma
-- Ensure pixel-perfect fidelity on both mobile and desktop
-- Handle all user interactions and state transitions
+## Where things are
 
-### 2. Deterministic A/B Testing (50/50 Split)
-- **On first entry**: Assign variant via cryptographically secure RNG
-- **Persist** variant to `cancellations.downsell_variant` field
-- **Reuse** variant on repeat visits (never re-randomize)
+```
+src/app/cancel/page.tsx
+src/app/cancel/steps/{Reason,Downsell,Confirm}.tsx
+src/app/api/{mock-subscription,downsell-variant,cancel,apply-discount}/route.ts
+src/lib/supabase.ts
+src/types/cancel.ts
+seed.sql
+schema_patch.sql
+```
 
-**Variant A**: No downsell screen
-**Variant B**: Show "$10 off" offer
-- Price $25 → $15, Price $29 → $19
-- **Accept** → Log action, take user back to profile page (NO ACTUAL PAYMENT PROCESSING REQUIRED)
-- **Decline** → Continue to reason selection in flow
+## How I test manually
 
-### 3. Data Persistence
-- Mark subscription as `pending_cancellation` in database
-- Create cancellation record with:
-  - `user_id`
-  - `downsell_variant` (A or B)
-  - `reason` (from user selection)
-  - `accepted_downsell` (boolean)
-  - `created_at` (timestamp)
+1. Open `/cancel`, pick a reason → **Continue**.
+2. Variant A (no discount): continue → confirm cancel → success card.
+3. Variant B: **I’ll stay and take the discount** → **Apply discount & stay** → success card.
+4. DB checks (optional):
 
-### 4. Security Requirements
-- **Row-Level Security (RLS)** policies
-- **Input validation** on all user inputs
-- **CSRF/XSS protection**
-- Secure handling of sensitive data
+   * `pending_cancellation` toggles correctly
+   * `monthly_price` drops on discount
+   * `cancellations` row only when actually canceling
 
-### 5. Reproducible Setup
-- `npm run db:setup` creates schema and seed data (local development)
-- Clear documentation for environment setup
+## Troubleshooting
 
-## Out of Scope
+* **405 on /api/**: route files must be `route.ts` with `export async function POST`.
+* **“Conflicting route and page at /cancel”**: remove any `src/app/cancel/route.*`.
+* **403 Bad origin**: use `http://localhost:3000` and set `NEXT_PUBLIC_APP_URL` to that.
+* **Variant missing / columns missing**: run `npm run db:setup`.
 
-- **Payment processing** - Stub with comments only
-- **User authentication** - Use mock user data
-- **Email notifications** - Not required
-- **Analytics tracking** - Focus on core functionality
+````
 
-## Getting Started
+If you want me to save it for you via a command, run:
 
-1. **Clone this repository** `git clone [repo]`
-2. **Install dependencies**: `npm install`
-3. **Set up local database**: `npm run db:setup`
-4. **Start development**: `npm run dev`
+```bash
+cat > README.md <<'MD'
+# Cancel Flow (take-home)
 
-## Database Schema
+I built a small subscription **cancellation flow** with a deterministic A/B downsell using **Next.js + TypeScript + Tailwind + Supabase**. This is evaluation-only (not production).
 
-The `seed.sql` file provides a **starting point** with:
-- `users` table with sample users
-- `subscriptions` table with $25 and $29 plans
-- `cancellations` table (minimal structure - **you'll need to expand this**)
-- Basic RLS policies (enhance as needed)
+## Quickstart
 
-### Important: Schema Design Required
+```bash
+npm install
+npm run db:setup
+npm run dev
+# open http://localhost:3000/cancel
+````
 
-The current `cancellations` table is intentionally minimal. You'll need to:
-- **Analyze the cancellation flow requirements** from the Figma design
-- **Design appropriate table structure(s)** to capture all necessary data
-- **Consider data validation, constraints, and relationships**
-- **Ensure the schema supports the A/B testing requirements**
+## Environment
 
-## Evaluation Criteria
+Create `.env.local` using the keys printed by `npx supabase start` (an example is in `.env.example`):
 
-- **Functionality (40%)**: Feature completeness and correctness
-- **Code Quality (25%)**: Clean, maintainable, well-structured code
-- **Pixel/UX Fidelity (15%)**: Accuracy to Figma design
-- **Security (10%)**: Proper RLS, validation, and protection
-- **Documentation (10%)**: Clear README and code comments
+```
+NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
+NEXT_PUBLIC_SUPABASE_ANON_KEY=REPLACE_ME
+SUPABASE_SERVICE_ROLE_KEY=REPLACE_ME
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+MOCK_USER_ID=550e8400-e29b-41d4-a716-446655440001
+NEXT_PUBLIC_MOCK_USER_ID=550e8400-e29b-41d4-a716-446655440001
+```
 
-## Deliverables
+`npm run db:setup` starts Supabase and applies `seed.sql` + `schema_patch.sql`.
 
-1. **Working implementation** in this repository
-2. **NEW One-page README.md (replace this)** (≤600 words) explaining:
-   - Architecture decisions
-   - Security implementation
-   - A/B testing approach
-3. **Clean commit history** with meaningful messages
+## What I implemented
 
-## Timeline
+* Progressive flow: **Reason → Offer (A/B) → Confirm** with mobile/desktop layouts.
+* Deterministic A/B: assigned once with secure RNG, stored in `subscriptions.downsell_variant`, reused on return.
+* Cancel path: sets `subscriptions.pending_cancellation = true` and inserts into `cancellations`.
+* Discount path (if Variant B accepted): reduces price (\$25→\$15 or \$29→\$19) and keeps the subscription active (no cancellation row).
+* “Already pending” UX: shows an info card if the sub is already pending.
+* Security: Origin check (CSRF), payload validation (incl. max reason length), RLS policies added.
 
-Submit your solution within **72 hours** of receiving this repository.
+## Where things are
 
-## AI Tooling
+```
+src/app/cancel/page.tsx
+src/app/cancel/steps/{Reason,Downsell,Confirm}.tsx
+src/app/api/{mock-subscription,downsell-variant,cancel,apply-discount}/route.ts
+src/lib/supabase.ts
+src/types/cancel.ts
+seed.sql
+schema_patch.sql
+```
 
-Using Cursor, ChatGPT, Copilot, etc. is **encouraged**. Use whatever accelerates your development—just ensure you understand the code and it runs correctly.
+## How I test manually
 
-## Questions?
+1. Open `/cancel`, pick a reason → **Continue**.
+2. Variant A (no discount): continue → confirm cancel → success card.
+3. Variant B: **I’ll stay and take the discount** → **Apply discount & stay** → success card.
+4. DB checks (optional):
 
-Review the challenge requirements carefully. If you have questions about specific implementation details, make reasonable assumptions and document them in your README.
+   * `pending_cancellation` toggles correctly
+   * `monthly_price` drops on discount
+   * `cancellations` row only when actually canceling
 
----
+## Troubleshooting
 
-**Good luck!** We're excited to see your implementation.
+* **405 on /api/**: route files must be `route.ts` with `export async function POST`.
+* **“Conflicting route and page at /cancel”**: remove any `src/app/cancel/route.*`.
+* **403 Bad origin**: use `http://localhost:3000` and set `NEXT_PUBLIC_APP_URL` to that.
+* **Variant missing / columns missing**: run `npm run db:setup`.
+  MD
+
+
